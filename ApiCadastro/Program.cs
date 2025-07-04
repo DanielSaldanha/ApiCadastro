@@ -1,3 +1,4 @@
+using ApiCadastro.Credit;
 using ApiCadastro.Data;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -49,6 +50,10 @@ builder.Services.AddStackExchangeRedisCache(options =>
 {
     options.Configuration = "localhost:6379"; // Altere para o seu endpoint do Redis, se necessário
 });
+
+// Registrar o CreditService
+builder.Services.AddScoped<CreditService>();
+
 
 //JTW
 var key = Encoding.ASCII.GetBytes("m1nh@_Ultr@_ch@v3_s3cr3t@_&_F0rt3"); // Mesma chave usada no TokenService

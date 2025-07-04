@@ -7,6 +7,10 @@ using Microsoft.Extensions.Caching.Distributed;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
+using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Identity;
+using ApiCadastro.Credit;
+
 
 namespace ApiCadastro.Controllers
 {
@@ -16,23 +20,29 @@ namespace ApiCadastro.Controllers
         private readonly AppDbContext _context;
         private readonly IMemoryCache _Mcache;
         private readonly IDistributedCache _Rcache;
-        public UserController(IDistributedCache Rcache,IMemoryCache Mcache,AppDbContext context)
+        private readonly CreditService _creditService;
+        public UserController(CreditService creditService,IDistributedCache Rcache,IMemoryCache Mcache,AppDbContext context)
         {
             _context = context;
             _Mcache = Mcache;
             _Rcache = Rcache;
+            _creditService = creditService;
         }
 
         [HttpPost("registrar")]
-        public async Task<ActionResult> Registrar([FromBody] UserRegisterDto dto)
+        public async Task<ActionResult> Registrar([FromBody] DTO dto)
         {
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
             // Verifica se já existe usuário com o mesmo email
             if (await _context.Cadastro.AnyAsync(u => u.email == dto.email))
                 return BadRequest("E-mail já cadastrado.");
 
             var user = new User
             {
-                Id = dto.Id,
                 nome = dto.nome,
                 email = dto.email,
                 profissao = dto.profissao,
@@ -57,72 +67,26 @@ namespace ApiCadastro.Controllers
 
             return Ok("Usuário registrado com sucesso.");
         }
-
-        // DTO para registro
-        public class UserRegisterDto
+        [HttpPost("registrarSemDTO")]
+        public async Task<ActionResult> RegistrarSemDTO([FromBody] User usr)
         {
-            public int Id { get; set; }
-            public string? nome { get; set; }
-            public string? email { get; set; }
-            public string? profissao { get; set; }
-            public string? cargo { get; set; }
-            public string? password { get; set; }
-        }
-
-
-        [HttpGet("buscar")]
-        public async Task<ActionResult> Getter(int id)
-        {
-            //credit system
-            var QuantiaDeUso = await _Rcache.GetStringAsync("usos");
-            int usos = 0;
-            if(!string.IsNullOrEmpty(QuantiaDeUso))
+            if (!ModelState.IsValid)
             {
-                QuantiaDeUso = QuantiaDeUso.Trim('"');
-                int.TryParse(QuantiaDeUso, out usos);
-            }
-            if(usos >= 10)
-            {
-                var TempoDeInvalidacao = new DistributedCacheEntryOptions
-                {
-                    AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10)
-                };
-                usos = 10;
-                await _Rcache.SetStringAsync("usos", usos.ToString(), TempoDeInvalidacao);
-                return BadRequest("lack credt for 10 minutes");
+                return BadRequest(ModelState);
             }
 
-            //layer 1
-            if (_Mcache.TryGetValue($"User_{id}", out User vget))
-            {
-                usos++;
-                await _Rcache.SetStringAsync("usos", usos.ToString());
-                return Ok(vget);
-            }
+            // Verifica se já existe usuário com o mesmo email
+            if (await _context.Cadastro.AnyAsync(u => u.email == usr.email))
+                return BadRequest("E-mail já cadastrado.");
 
-            //layer 2
-            var cacheredis = await _Rcache.GetStringAsync($"User_{id}");
-            if(cacheredis != null)
+            var user = new User
             {
-                var CorrectCacheRedis = JsonSerializer.Deserialize<User>(cacheredis);
-                var Mcacheoptions = new MemoryCacheEntryOptions
-                {
-                    AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10),
-                    SlidingExpiration = TimeSpan.FromMinutes(10)
-                };
-                _Mcache.Set($"User_{id}", CorrectCacheRedis, Mcacheoptions);
+                senhas = BCrypt.Net.BCrypt.HashPassword(usr.senhas)
+            };
 
-                usos++;
-                await _Rcache.SetStringAsync("usos", usos.ToString());
-                return Ok(CorrectCacheRedis);
-            }
+            await _context.Cadastro.AddAsync(user);
+            await _context.SaveChangesAsync();
 
-            //layer 3
-            vget = await _context.Cadastro.FindAsync(id);
-            if(vget == null)
-            {
-                return NotFound("usuario não encontrado");
-            }
             var cacheoptions = new MemoryCacheEntryOptions
             {
                 AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10),
@@ -132,11 +96,72 @@ namespace ApiCadastro.Controllers
             {
                 AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(500)
             };
+            await _Rcache.SetStringAsync($"User_{user.Id}", JsonSerializer.Serialize(user), RediscacheOptions);
+            _Mcache.Set($"User_{user.Id}", user, cacheoptions);
+
+            return Ok("Usuário registrado com sucesso.");
+        }
+
+
+        [HttpGet("buscar")]
+        public async Task<ActionResult> Getter(int id)
+        {
+            //credit system
+            int usos = 0;
+            usos = await _creditService.Verificador();
+            if(usos >= 10)
+            {
+                return BadRequest("lack credit for 10 minutes");
+            }
+
+            //layer 1
+            if (_Mcache.TryGetValue($"User_{id}", out User vget))
+            {
+                //down credit
+                await _creditService.UploadCredito(usos);
+                return Ok(vget);
+            }
+
+            //layer 2
+            var cacheredis = await _Rcache.GetStringAsync($"User_{id}");
+            if(cacheredis != null)
+            {
+                var CorrectCacheRedis = JsonSerializer.Deserialize<User>(cacheredis);
+                //cache config
+                var Mcacheoptions = new MemoryCacheEntryOptions
+                {
+                    AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10),
+                    SlidingExpiration = TimeSpan.FromMinutes(10)
+                };
+                //save and upload
+                _Mcache.Set($"User_{id}", CorrectCacheRedis, Mcacheoptions);
+                //down credit
+                await _creditService.UploadCredito(usos);
+                return Ok(CorrectCacheRedis);
+            }
+
+            //layer 3
+            vget = await _context.Cadastro.FindAsync(id);
+            if(vget == null)
+            {
+                return NotFound("usuario não encontrado");
+            }
+
+            //cache config
+            var cacheoptions = new MemoryCacheEntryOptions
+            {
+                AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10),
+                SlidingExpiration = TimeSpan.FromMinutes(10)
+            };
+            var RediscacheOptions = new DistributedCacheEntryOptions
+            {
+                AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(500)
+            };
+            //save and update
             await _Rcache.SetStringAsync($"User_{id}", JsonSerializer.Serialize(vget), RediscacheOptions);
             _Mcache.Set($"User_{id}", vget, cacheoptions);
-
-            usos++;
-            await _Rcache.SetStringAsync("usos", usos.ToString());
+            //down credit
+            await _creditService.UploadCredito(usos);
             return Ok(vget);
         }
 
@@ -152,22 +177,11 @@ namespace ApiCadastro.Controllers
             {
                 return BadRequest("falta de informações");
             }
-            //limit system
-            var QuantiaDeUso = await _Rcache.GetStringAsync("usos");
+            //credit system
             int usos = 0;
-            if(!string.IsNullOrEmpty(QuantiaDeUso))
-            {
-                QuantiaDeUso = QuantiaDeUso.Trim('"');
-                int.TryParse(QuantiaDeUso, out usos);
-            }
+            usos = await _creditService.Verificador();
             if (usos >= 10)
             {
-                var RediscacheOptionsCredit = new DistributedCacheEntryOptions
-                {
-                    AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10)
-                };
-                usos = 10;
-                await _Rcache.SetStringAsync("usos", usos.ToString(), RediscacheOptionsCredit);
                 return BadRequest("lack credit for 10 minutes");
             }
             //layer 1
@@ -175,12 +189,13 @@ namespace ApiCadastro.Controllers
             {
                 try
                 {
-                    usos++;
-                    await _Rcache.SetStringAsync("usos", usos.ToString());
+                    //down credit
+                    await _creditService.UploadCredito(usos);
                     return Ok(resultado);
                 }
                 catch (JsonException)
                 {
+                    //tratamento para cache corrompido (remove e ingnora)
                     await _Rcache.RemoveAsync($"valueBy({nome}|{email}|{profissao}|{cargo})");
                 }
                 
@@ -191,21 +206,23 @@ namespace ApiCadastro.Controllers
             {
                 try
                 {
+
                     var cache = JsonSerializer.Deserialize<List<User>>(Key);
+                    //cache config
                     var McacheoptionsInredis = new MemoryCacheEntryOptions
                     {
                         AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10),
                         SlidingExpiration = TimeSpan.FromMinutes(10)
                     };
+                    //cache save and update
                     _Mcache.Set($"valueBy({nome}|{email}|{profissao}|{cargo})", cache, McacheoptionsInredis);
-                    usos++;
-                    await _Rcache.SetStringAsync("usos", usos.ToString());
+                    //down credit
+                    await _creditService.UploadCredito(usos);
                     return Ok(cache);
                 }
                 catch (JsonException)
                 {
-                    // Cache corrompido, ignora e segue para buscar no banco
-                    // Removendo o cache corrompido
+                    //tratamento para cache corrompido (remove e ingnora)
                     await _Rcache.RemoveAsync($"valueBy({nome}|{email}|{profissao}|{cargo})");
                 }
             }
@@ -228,7 +245,7 @@ namespace ApiCadastro.Controllers
 
                 if (resultado2.Count == 0)
                     return NotFound("Nenhum usuário encontrado com os filtros informados.");
-
+            //cache config
             var Mcacheoptions = new MemoryCacheEntryOptions
             {
                 AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10),
@@ -238,10 +255,11 @@ namespace ApiCadastro.Controllers
             {
                 AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(500)
             };
+            //cache save and update
             _Mcache.Set($"valueBy({nome}|{email}|{profissao}|{cargo})", resultado2, Mcacheoptions);
             await _Rcache.SetStringAsync($"valueBy({nome}|{email}|{profissao}|{cargo})", JsonSerializer.Serialize(resultado2), RediscacheOptions);
-            usos++;
-            await _Rcache.SetStringAsync("usos", usos.ToString());
+            //down credit
+            await _creditService.UploadCredito(usos);
             return Ok(resultado2);
             
 
