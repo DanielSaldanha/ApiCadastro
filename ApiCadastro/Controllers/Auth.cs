@@ -1,26 +1,38 @@
-﻿using ApiCadastro.TokenPaste;
+﻿using ApiCadastro.Data;
+using ApiCadastro.TokenPaste;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace ApiCadastro.Controllers
 {
     public class Auth : ControllerBase
     {
-        [HttpPost("gerartoken")]
-        public ActionResult GerarToken([FromBody] PSN parametros)
+        private readonly AppDbContext _context;
+        public Auth(AppDbContext context)
         {
-            Console.WriteLine($"recebendo {parametros.username} e {parametros.password}");
-            if(parametros.username == "admin" && parametros.password == "123")
+            _context = context;
+        }
+
+        [HttpPost("gerartoken")]
+        public async Task<ActionResult> GerarToken([FromBody] PSN parametros)
+        {
+            var hash = BCrypt.Net.BCrypt.HashPassword("minhaSenhaSegura");
+            Console.WriteLine(hash);
+            var user = await _context.Cadastro.FirstOrDefaultAsync(u => u.nome == parametros.username);
+
+            if (user == null || string.IsNullOrEmpty(user.senhas) ||
+                !BCrypt.Net.BCrypt.Verify(parametros.password, user.senhas))
             {
-                var token = CreateToken.generateToken(parametros.username);
-                return Ok(new { token });
+                return Unauthorized("Usuário ou senha inválidos.");
             }
-            Console.WriteLine("Parametro invalidos");
-            return Unauthorized("Usuário ou senha inválidos.");
+
+            var token = CreateToken.generateToken(user.nome ?? "");
+            return Ok(new { token });
         }
     }
+
     public class PSN
     {
-        //o nome do parametro tem que ser igual ao do front end
         public string? username { get; set; }
         public string? password { get; set; }
     }
