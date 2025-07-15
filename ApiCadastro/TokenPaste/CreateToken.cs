@@ -27,3 +27,5 @@ namespace ApiCadastro.TokenPaste
         }
     }
 }
+
+

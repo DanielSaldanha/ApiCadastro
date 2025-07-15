@@ -51,7 +51,7 @@ builder.Services.AddStackExchangeRedisCache(options =>
     options.Configuration = "localhost:6379"; // Altere para o seu endpoint do Redis, se necessário
 });
 
-// Registrar o CreditService
+
 builder.Services.AddScoped<CreditService>();
 
 

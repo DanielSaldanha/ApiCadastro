@@ -16,8 +16,6 @@ namespace ApiCadastro.Controllers
         [HttpPost("gerartoken")]
         public async Task<ActionResult> GerarToken([FromBody] PSN parametros)
         {
-            var hash = BCrypt.Net.BCrypt.HashPassword("minhaSenhaSegura");
-            Console.WriteLine(hash);
             var user = await _context.Cadastro.FirstOrDefaultAsync(u => u.nome == parametros.username);
 
             if (user == null || string.IsNullOrEmpty(user.senhas) ||
@@ -37,3 +35,4 @@ namespace ApiCadastro.Controllers
         public string? password { get; set; }
     }
 }
+

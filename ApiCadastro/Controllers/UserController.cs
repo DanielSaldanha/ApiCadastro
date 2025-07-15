@@ -10,6 +10,7 @@ using Microsoft.EntityFrameworkCore;
 using System.ComponentModel.DataAnnotations;
 using Microsoft.AspNetCore.Identity;
 using ApiCadastro.Credit;
+using System.Text.Json.Serialization;
 
 
 namespace ApiCadastro.Controllers
@@ -29,15 +30,27 @@ namespace ApiCadastro.Controllers
             _creditService = creditService;
         }
 
+        private bool ValidarIdade(DateTime dataNascimento)
+        {
+            var idade = DateTime.Now.Year - dataNascimento.Year;
+            if (dataNascimento.Date > DateTime.Now.AddYears(-idade)) idade--;
+            return idade >= 18 && idade <= 65;
+        }
+
         [HttpPost("registrar")]
         public async Task<ActionResult> Registrar([FromBody] DTO dto)
         {
+        
             if (!ModelState.IsValid)
             {
                 return BadRequest(ModelState);
             }
 
-            // Verifica se já existe usuário com o mesmo email
+            if (!ValidarIdade(dto.nascimento))
+            {
+                return BadRequest("A idade deve estar entre 18 e 65 anos.");
+            }
+
             if (await _context.Cadastro.AnyAsync(u => u.email == dto.email))
                 return BadRequest("E-mail já cadastrado.");
 
@@ -49,7 +62,6 @@ namespace ApiCadastro.Controllers
                 cargo = dto.cargo,
                 senhas = BCrypt.Net.BCrypt.HashPassword(dto.password)
             };
-
             await _context.Cadastro.AddAsync(user);
             await _context.SaveChangesAsync();
 
@@ -67,6 +79,8 @@ namespace ApiCadastro.Controllers
 
             return Ok("Usuário registrado com sucesso.");
         }
+
+
         [HttpPost("registrarSemDTO")]
         public async Task<ActionResult> RegistrarSemDTO([FromBody] User usr)
         {
@@ -117,6 +131,10 @@ namespace ApiCadastro.Controllers
             //layer 1
             if (_Mcache.TryGetValue($"User_{id}", out User vget))
             {
+                if(vget.ativo == false)
+                {
+                    return BadRequest("Usuario Inativo");
+                }
                 //down credit
                 await _creditService.UploadCredito(usos);
                 return Ok(vget);
@@ -127,6 +145,11 @@ namespace ApiCadastro.Controllers
             if(cacheredis != null)
             {
                 var CorrectCacheRedis = JsonSerializer.Deserialize<User>(cacheredis);
+                
+                if (CorrectCacheRedis.ativo == false)
+                {
+                    return BadRequest("usuario inativo");
+                }
                 //cache config
                 var Mcacheoptions = new MemoryCacheEntryOptions
                 {
@@ -137,14 +160,33 @@ namespace ApiCadastro.Controllers
                 _Mcache.Set($"User_{id}", CorrectCacheRedis, Mcacheoptions);
                 //down credit
                 await _creditService.UploadCredito(usos);
-                return Ok(CorrectCacheRedis);
+                DTO dtoRedis = new DTO
+                {
+                    nome = CorrectCacheRedis.nome,
+                    email = CorrectCacheRedis.email,
+                    profissao = CorrectCacheRedis.profissao,
+                    cargo = CorrectCacheRedis.cargo,
+                    password = "não visivel"
+
+                };
+                return Ok(dtoRedis);
             }
 
             //layer 3
-            vget = await _context.Cadastro.FindAsync(id);
+            vget = await _context.Cadastro.FindAsync(id); 
+
+            //tratamento de erros
             if(vget == null)
             {
                 return NotFound("usuario não encontrado");
+            }
+            if (vget.deleteAt == true)
+            {
+                return BadRequest("usuario não encontrado");
+            }
+            if (vget.ativo == false)
+            {
+                return BadRequest("Usuario Inativo");
             }
 
             //cache config
@@ -162,8 +204,20 @@ namespace ApiCadastro.Controllers
             _Mcache.Set($"User_{id}", vget, cacheoptions);
             //down credit
             await _creditService.UploadCredito(usos);
-            return Ok(vget);
+
+            DTO dto = new DTO
+            {
+                nome = vget.nome,
+                email = vget.email,
+                profissao = vget.profissao,
+                cargo = vget.cargo,
+                password = "não visivel"
+
+            };
+
+            return Ok(dto);
         }
+
 
         [HttpGet("buscar-filtro")]
         public async Task<ActionResult> BuscarPorFiltro(
@@ -191,7 +245,17 @@ namespace ApiCadastro.Controllers
                 {
                     //down credit
                     await _creditService.UploadCredito(usos);
-                    return Ok(resultado);
+
+                    var resMem = resultado.Select(u => new DTO
+                    {
+                        nome = u.nome,
+                        email = u.email,
+                        profissao = u.profissao,
+                        cargo = u.cargo,
+                        password = "não visivel"
+                    }).ToList();
+
+                    return Ok(resMem);
                 }
                 catch (JsonException)
                 {
@@ -218,7 +282,19 @@ namespace ApiCadastro.Controllers
                     _Mcache.Set($"valueBy({nome}|{email}|{profissao}|{cargo})", cache, McacheoptionsInredis);
                     //down credit
                     await _creditService.UploadCredito(usos);
-                    return Ok(cache);
+
+                    //selecionador de valores
+                    var resRedis = cache.Select(u => new DTO
+                    {
+                        nome = u.nome,
+                        email = u.email,
+                        profissao = u.profissao,
+                        cargo = u.cargo,
+                        password = "não visivel"
+                    }).ToList();
+
+
+                    return Ok(resRedis);
                 }
                 catch (JsonException)
                 {
@@ -260,7 +336,16 @@ namespace ApiCadastro.Controllers
             await _Rcache.SetStringAsync($"valueBy({nome}|{email}|{profissao}|{cargo})", JsonSerializer.Serialize(resultado2), RediscacheOptions);
             //down credit
             await _creditService.UploadCredito(usos);
-            return Ok(resultado2);
+            //selecionador de valores
+            var res = resultado2.Select(u => new DTO {
+                nome = u.nome,
+                email = u.email,
+                profissao = u.profissao,
+                cargo = u.cargo,
+                password = "não visivel"
+            }).ToList();
+            
+            return Ok(res);
             
 
         }
@@ -285,6 +370,21 @@ namespace ApiCadastro.Controllers
             return CreatedAtAction(nameof(poster), new { id = vpost.Id }, vpost);
         }
 
-        //MÉTODOS PUT E DELETE NÃO SE ENCAIXAM NA PARTE DE CADASTRO
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> delete(int id)
+        {
+            var dlt = await _context.Cadastro.FindAsync(id);
+            if(dlt == null)
+            {
+                return BadRequest("operção falhada");
+            }
+            dlt.deleteAt = true;
+            await _Rcache.RemoveAsync($"User_{id}");
+            _Mcache.Remove($"User_{id}");
+            await _context.SaveChangesAsync();
+            return NoContent();
+        }
     }
 }
+
+
