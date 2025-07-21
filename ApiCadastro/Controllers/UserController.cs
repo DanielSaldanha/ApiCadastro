@@ -370,6 +370,42 @@ namespace ApiCadastro.Controllers
             return CreatedAtAction(nameof(poster), new { id = vpost.Id }, vpost);
         }
 
+        [HttpPut("mudar senha")]//PRECISA DE MELHORIA. ERRO NO BCRYPT
+        public async Task<IActionResult> mudarSenha(string senha, int id, [FromBody] User user)
+        {
+            if(id != user.Id)
+            {
+                return BadRequest("id não correspondente");
+            }
+            if (!BCrypt.Net.BCrypt.Verify(senha, user.senhas))
+                return BadRequest("senha incorreta");
+
+
+
+            User userCriptografado = new User { senhas = BCrypt.Net.BCrypt.HashPassword(senha) };
+                _context.Entry(userCriptografado).State = EntityState.Modified;
+                await _context.SaveChangesAsync();
+
+                //config
+                var cacheoptions = new MemoryCacheEntryOptions
+                {
+                    AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10),
+                    SlidingExpiration = TimeSpan.FromMinutes(10)
+                };
+                var RediscacheOptions = new DistributedCacheEntryOptions
+                {
+                    AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(500)
+                };
+                //save cache
+                await _Rcache.SetStringAsync($"User_{user.Id}", JsonSerializer.Serialize(user), RediscacheOptions);
+                _Mcache.Set($"User_{user.Id}", user, cacheoptions);
+
+                return NoContent();
+
+            
+            
+        }
+
         [HttpDelete("{id}")]
         public async Task<IActionResult> delete(int id)
         {
