@@ -46,6 +46,13 @@ namespace ApiCadastro.Controllers
                 return BadRequest(ModelState);
             }
 
+            var usuarioAutenticado = HttpContext.User; // Aqui você pode obter as informações do usuário
+
+            if (usuarioAutenticado == null || !usuarioAutenticado.Identity.IsAuthenticated)
+            {
+                return Unauthorized("Token não é válido ou não autenticado.");
+            }
+
             if (!ValidarIdade(dto.nascimento))
             {
                 return BadRequest("A idade deve estar entre 18 e 65 anos.");
@@ -120,6 +127,12 @@ namespace ApiCadastro.Controllers
         [HttpGet("buscar")]
         public async Task<ActionResult> Getter(int id)
         {
+            var usuarioAutenticado = HttpContext.User; // Aqui você pode obter as informações do usuário
+
+            if (usuarioAutenticado == null || !usuarioAutenticado.Identity.IsAuthenticated)
+            {
+                return Unauthorized("Token não é válido ou não autenticado.");
+            }
             //credit system
             int usos = 0;
             usos = await _creditService.Verificador();
@@ -226,6 +239,12 @@ namespace ApiCadastro.Controllers
         [FromQuery] string? profissao,
         [FromQuery] string? cargo
         ){
+            var usuarioAutenticado = HttpContext.User; // Aqui você pode obter as informações do usuário
+
+            if (usuarioAutenticado == null || !usuarioAutenticado.Identity.IsAuthenticated)
+            {
+                return Unauthorized("Token não é válido ou não autenticado.");
+            }
             if (string.IsNullOrEmpty(nome) && string.IsNullOrEmpty(email)
             && string.IsNullOrEmpty(profissao) && string.IsNullOrEmpty(cargo))
             {
@@ -371,44 +390,52 @@ namespace ApiCadastro.Controllers
         }
 
         [HttpPut("mudar senha")]//PRECISA DE MELHORIA. ERRO NO BCRYPT
-        public async Task<IActionResult> mudarSenha(string senha, int id, [FromBody] User user)
+        public async Task<IActionResult> mudarSenha(string senha, int id, string senhaNova)
         {
-            if(id != user.Id)
+            var usuarioAchado = await _context.Cadastro.FindAsync(id);
+            if (usuarioAchado == null)
             {
-                return BadRequest("id não correspondente");
+                return BadRequest("Usuário não encontrado.");
             }
-            if (!BCrypt.Net.BCrypt.Verify(senha, user.senhas))
+
+            if (!BCrypt.Net.BCrypt.Verify(senha, usuarioAchado.senhas))
+            {
                 return BadRequest("senha incorreta");
+            }
 
+            // Atualize diretamente a entidade carregada
+            usuarioAchado.senhas = BCrypt.Net.BCrypt.HashPassword(senhaNova); // Use a nova senha para atualizar
 
+            // Não é necessário modificar o estado pois usuarioAchado já está sendo rastreado
+            await _context.SaveChangesAsync();
 
-            User userCriptografado = new User { senhas = BCrypt.Net.BCrypt.HashPassword(senha) };
-                _context.Entry(userCriptografado).State = EntityState.Modified;
-                await _context.SaveChangesAsync();
+            // Configurações de cache (se necessário)
+            var cacheoptions = new MemoryCacheEntryOptions
+            {
+                AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10),
+                SlidingExpiration = TimeSpan.FromMinutes(10)
+            };
+            var RediscacheOptions = new DistributedCacheEntryOptions
+            {
+                AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(500)
+            };
 
-                //config
-                var cacheoptions = new MemoryCacheEntryOptions
-                {
-                    AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(10),
-                    SlidingExpiration = TimeSpan.FromMinutes(10)
-                };
-                var RediscacheOptions = new DistributedCacheEntryOptions
-                {
-                    AbsoluteExpirationRelativeToNow = TimeSpan.FromSeconds(500)
-                };
-                //save cache
-                await _Rcache.SetStringAsync($"User_{user.Id}", JsonSerializer.Serialize(user), RediscacheOptions);
-                _Mcache.Set($"User_{user.Id}", user, cacheoptions);
+            // Salvar cache
+            await _Rcache.SetStringAsync($"User_{usuarioAchado.Id}", JsonSerializer.Serialize(usuarioAchado), RediscacheOptions);
+            _Mcache.Set($"User_{usuarioAchado.Id}", usuarioAchado, cacheoptions);
 
-                return NoContent();
-
-            
-            
+            return NoContent();
         }
 
         [HttpDelete("{id}")]
         public async Task<IActionResult> delete(int id)
         {
+            var usuarioAutenticado = HttpContext.User; // Aqui você pode obter as informações do usuário
+
+            if (usuarioAutenticado == null || !usuarioAutenticado.Identity.IsAuthenticated)
+            {
+                return Unauthorized("Token não é válido ou não autenticado.");
+            }
             var dlt = await _context.Cadastro.FindAsync(id);
             if(dlt == null)
             {

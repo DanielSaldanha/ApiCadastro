@@ -88,6 +88,8 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
+app.UseMiddleware<JwtMiddleware>();//instanciando middleware de token
+
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
 {

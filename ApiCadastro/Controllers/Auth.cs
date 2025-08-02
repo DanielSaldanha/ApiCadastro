@@ -27,12 +27,39 @@ namespace ApiCadastro.Controllers
             var token = CreateToken.generateToken(user.nome ?? "");
             return Ok(new { token });
         }
+        [HttpPost("logout")]
+        public IActionResult Logout([FromBody] string token)
+        {
+            if (string.IsNullOrEmpty(token))
+            {
+                return BadRequest("Token inválido");
+            }
+
+            // Adiciona o token à lista de revogação
+            RevokedTokens.Revoke(token);
+
+            return NoContent(); // 204 No Content
+        }
     }
 
     public class PSN
     {
         public string? username { get; set; }
         public string? password { get; set; }
+    }
+    public static class RevokedTokens
+    {
+        private static readonly HashSet<string> revokedTokens = new HashSet<string>();
+
+        public static void Revoke(string token)
+        {
+            revokedTokens.Add(token);
+        }
+
+        public static bool IsRevoked(string token)
+        {
+            return revokedTokens.Contains(token);
+        }
     }
 }
 
