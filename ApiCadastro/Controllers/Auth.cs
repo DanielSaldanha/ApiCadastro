@@ -19,7 +19,7 @@ namespace ApiCadastro.Controllers
             var user = await _context.Cadastro.FirstOrDefaultAsync(u => u.nome == parametros.username);
 
             if (user == null || string.IsNullOrEmpty(user.senhas) ||
-                !BCrypt.Net.BCrypt.Verify(parametros.password, user.senhas))
+                !BCrypt.Net.BCrypt.Verify(parametros.password, user.senhas))//valor do password == chave para desautenticar
             {
                 return Unauthorized("Usuário ou senha inválidos.");
             }

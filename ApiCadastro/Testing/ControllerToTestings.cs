@@ -3,12 +3,12 @@ using Microsoft.AspNetCore.Mvc;
 using ApiCadastro.Model;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
+using ApiCadastro.Testing;
 
 
 
 namespace ApiCadastro.Controllers
 {
-    [Authorize]
     public class ControllerToTestings : ControllerBase
     {
         private readonly AppDbContext _context;
@@ -43,6 +43,35 @@ namespace ApiCadastro.Controllers
 
             if (await _context.Cadastro.AnyAsync(u => u.email == dto.email))
                 return BadRequest("E-mail já cadastrado.");
+
+            var user = new User
+            {
+                nome = dto.nome,
+                email = dto.email,
+                profissao = dto.profissao,
+                cargo = dto.cargo,
+                senhas = BCrypt.Net.BCrypt.HashPassword(dto.password)
+            };
+            await _context.Cadastro.AddAsync(user);
+            await _context.SaveChangesAsync();
+
+            return Ok("Usuário registrado com sucesso.");
+        }
+
+        [HttpPost("AN")]
+        [ApiExplorerSettings(IgnoreApi = true)] // Adiciona este cabeçalho para ocultar do Swagger
+        public async Task<ActionResult> RegistrarSemAnyAsync([FromBody] DTO dto)
+        {
+
+            if (!ModelState.IsValid)
+            {
+                return BadRequest(ModelState);
+            }
+
+            if (!ValidarIdade(dto.nascimento))
+            {
+                return BadRequest("A idade deve estar entre 18 e 65 anos.");
+            }
 
             var user = new User
             {
@@ -192,11 +221,17 @@ namespace ApiCadastro.Controllers
         [ApiExplorerSettings(IgnoreApi = true)] // Adiciona este cabeçalho para ocultar do Swagger
         public async Task<IActionResult> delete(int id)
         {
+            if (id == 30)
+            {
+                return BadRequest("você não pode deletar um admin");
+            }
             var dlt = await _context.Cadastro.FindAsync(id);
+            
             if (dlt == null)
             {
                 return BadRequest("operção falhada");
             }
+            if (dlt.Id == 30) return BadRequest("operção falhada");
             dlt.deleteAt = true;         
             await _context.SaveChangesAsync();
             return NoContent();
