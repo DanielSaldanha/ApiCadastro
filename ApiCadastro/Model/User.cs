@@ -6,11 +6,11 @@ namespace ApiCadastro.Model
     {
         public int Id { get; set; }
 
-        [Required(ErrorMessage = "A senha é obrigatória.")]
+        [Required(ErrorMessage = "o nome é obrigatório.")]
         public string? nome { get; set; }
 
 
-        [Required(ErrorMessage = "A senha é obrigatória.")]
+        [Required(ErrorMessage = "o email é obrigatório.")]
         [EmailAddress(ErrorMessage = "Formato de e-mail inválido.")]
         public string? email { get; set; }
 

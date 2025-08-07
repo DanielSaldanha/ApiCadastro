@@ -7,13 +7,12 @@ using Moq;
 using NUnit.Framework;
 using System;
 using System.Threading.Tasks;
-using ApiCadastro.Tests;
 using System.Linq.Expressions;
 
-namespace ApiCadastro.Tests
+namespace ApiCadastro.Testing.Controller
 {
     [TestFixture]
-    public class ControllerToTestingsTests
+    public class TestesIntegrados
     {
 
         private ControllerToTestings _controller;

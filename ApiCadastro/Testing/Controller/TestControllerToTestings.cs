@@ -2,17 +2,16 @@
 using Microsoft.EntityFrameworkCore;
 using Moq;
 using NUnit.Framework;
-using ApiCadastro.Testing;
 using ApiCadastro.Model;
 using ApiCadastro.Controllers;
 using Microsoft.AspNetCore.Mvc;
 using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
-namespace ApiCadastro.Testing
+namespace ApiCadastro.Testing.Controller
 {
     [TestFixture]
-    public class NovoTeste
+    public class TestControllerToTestings
     {
         private ControllerToTestings _controller;
         private Mock<DbSet<User>> _mockSet;
@@ -42,49 +41,6 @@ namespace ApiCadastro.Testing
             _mockContext = new Mock<AppDbContext>(options);
             
         }
-
-        //    [Test]// fracasso
-        //    public async Task Registrar_ReturnsBadRequest_QuandoEmailJaRegistrado()
-        //    {
-        //        // Arrange
-        //        var options = new DbContextOptionsBuilder<AppDbContext>()
-        //.UseInMemoryDatabase(databaseName: "TesteDb")
-        //.Options;
-        //        var mockContext = new Mock<AppDbContext>(options);
-        //        var mockSet = new Mock<DbSet<User>>();
-
-        //        //mockSet.Setup(m => m.AnyAsync(It.IsAny<Expression<Func<User, bool>>>(), It.IsAny<CancellationToken>()))
-        //        //       .ReturnsAsync(true); // Simula que o e-mail já está cadastrado
-        //        // ou seja não necessita de Add ou SaveChanges
-        //        // para simulações
-
-        //        //_mockContext.Setup(c => c.SaveChangesAsync(It.IsAny<CancellationToken>()))
-        //        //.ReturnsAsync(1); // 1 = número de registros afetados
-
-
-        //        mockContext.Setup(c => c.Cadastro).Returns(mockSet.Object);
-
-        //        var controller = new ControllerToTestings(mockContext.Object);
-
-        //        var dto = new DTO
-        //        {
-        //            nome = "Jane Doe",
-        //            email = "john@example.com", // E-mail já cadastrado
-        //            profissao = "Developer",
-        //            cargo = "Software Engineer",
-        //            password = "Password123!",
-        //            nascimento = new DateTime(1990, 1, 1)
-        //        };
-
-        //        // Act
-        //        var result = await controller.Registrar(dto);
-
-        //        // Assert
-        //        var badRequestResult = result as BadRequestObjectResult;
-        //        Assert.IsNotNull(badRequestResult);
-        //        Assert.AreEqual(400, badRequestResult.StatusCode);
-        //        Assert.AreEqual("E-mail já cadastrado.", badRequestResult.Value);
-        //    }
 
         [Test]
         public async Task Delete_MalSucedido()
@@ -324,3 +280,47 @@ namespace ApiCadastro.Testing
 
     }
 }
+
+//    [Test]// fracasso
+//    public async Task Registrar_ReturnsBadRequest_QuandoEmailJaRegistrado()
+//    {
+//        // Arrange
+//        var options = new DbContextOptionsBuilder<AppDbContext>()
+//.UseInMemoryDatabase(databaseName: "TesteDb")
+//.Options;
+//        var mockContext = new Mock<AppDbContext>(options);
+//        var mockSet = new Mock<DbSet<User>>();
+
+//        //mockSet.Setup(m => m.AnyAsync(It.IsAny<Expression<Func<User, bool>>>(), It.IsAny<CancellationToken>()))
+//        //       .ReturnsAsync(true); // Simula que o e-mail já está cadastrado
+//        // ou seja não necessita de Add ou SaveChanges
+//        // para simulações
+
+//        //_mockContext.Setup(c => c.SaveChangesAsync(It.IsAny<CancellationToken>()))
+//        //.ReturnsAsync(1); // 1 = número de registros afetados
+
+
+//        mockContext.Setup(c => c.Cadastro).Returns(mockSet.Object);
+
+//        var controller = new ControllerToTestings(mockContext.Object);
+
+//        var dto = new DTO
+//        {
+//            nome = "Jane Doe",
+//            email = "john@example.com", // E-mail já cadastrado
+//            profissao = "Developer",
+//            cargo = "Software Engineer",
+//            password = "Password123!",
+//            nascimento = new DateTime(1990, 1, 1)
+//        };
+
+//        // Act
+//        var result = await controller.Registrar(dto);
+
+//        // Assert
+//        var badRequestResult = result as BadRequestObjectResult;
+//        Assert.IsNotNull(badRequestResult);
+//        Assert.AreEqual(400, badRequestResult.StatusCode);
+//        Assert.AreEqual("E-mail já cadastrado.", badRequestResult.Value);
+//    }
+
